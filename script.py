@@ -33,7 +33,7 @@ def GetCollaboratorsOfRow(k, data):
     lcol = []
     for column in data.columns.tolist():
         if column.startswith('collaborator') and column.endswith('_adj'):
-            if pandas.notnull(data.loc[k, column]):
+            if pandas.notnull(data.loc[k, column])  and str(data.loc[k, column]).strip() != '':
                 lcol.append(data.loc[k, column])
     return list(set(lcol))
 
