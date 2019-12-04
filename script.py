@@ -88,10 +88,28 @@ def CreateMid(data, i, filtered, cutoff, alg):
 
 
 def FilterFatherSonDummies(is_father, is_son, dataframe):
+    '''
     if is_father == 1:
         dataframe = dataframe[dataframe['dummy_son'] == 0]
     if is_son == 1:
         dataframe = dataframe[dataframe['dummy_father'] == 0]
+    '''
+    # algorithm B does nothing..
+    return dataframe.reset_index(drop=True)
+
+def FilterKindredDummies(is_father, is_son, is_eldest, is_brother, is_brothers, dataframe):
+    if is_father:
+        dataframe = dataframe[dataframe['dummy_father']==1]
+    elif is_son:
+        dataframe = dataframe[dataframe['dummy_son']==1]
+    elif is_brother:
+        dataframe = dataframe[dataframe['dummy_brother']==1]
+    elif is_brothers:
+        dataframe = dataframe[dataframe['dummy_brothers']==1]
+    elif is_eldest:
+        dataframe = dataframe[dataframe['dummy_eldest']==1]
+    else:
+        dataframe = dataframe[(dataframe['dummy_brothers']==0) & (dataframe['dummy_brother']==0) & (dataframe['dummy_son']==0) & (dataframe['dummy_eldest']==0) & (dataframe['dummy_father']==0)]
     return dataframe.reset_index(drop=True)
 
 
@@ -107,9 +125,13 @@ def GetVariablesFor(data, i):
     is_company = data.loc[i, 'dummy_company']
     is_father = data.loc[i, 'dummy_father']
     is_son = data.loc[i, 'dummy_son']
+    is_eldest = data.loc[i, 'dummy_eldest']
+    is_brother = data.loc[i, 'dummy_brother']
+    is_brothers = data.loc[i, 'dummy_brothers']
     collaborators = GetCollaboratorsOfRow(i, data)
     return row1name, portdep, shipname, datedep_range_first, datedep_range_last, \
-           datedep_range_mean, last_name, initial, is_company, is_father, is_son, collaborators
+           datedep_range_mean, last_name, initial, is_company, is_father, is_eldest,\
+           is_brother, is_brothers, is_son, collaborators
 
 
 ################################################################################
@@ -126,7 +148,7 @@ from difflib import SequenceMatcher
 
 ################################################################################
 # import file as pandas Dataframe from path
-original_data_path = 'Data\\191113.dta'
+original_data_path = 'Data\\Orginal SV database_14043_merged_precleaned.dta'
 data = pandas.read_stata(original_data_path)
 # running the script for rows between 400-600 rows.. (if you want to do quick check for smaller part)
 # data = data[400:600]
@@ -137,18 +159,15 @@ data = data[['fullname_alias_adj', 'collaborator1_adj', 'collaborator2_adj', 'co
              'collaborator9_adj', 'collaborator10_adj', 'collaborator11_adj', 'collaborator12_adj', \
              'collaborator13_adj', 'collaborator14_adj', 'collaborator15_adj', 'datedep_range_first', \
              'datedep_range_last', 'datedep_range_mean', 'lastname_alias_adj', 'firstname_alias_adj', \
-             'dummy_company', 'dummy_father', 'dummy_son', 'dummy_missing_firstname', 'portdep', 'shipname']]
+             'dummy_company', 'dummy_father', 'dummy_son', 'dummy_missing_firstname', 'portdep', 'shipname', \
+             'dummy_eldest','dummy_brother','dummy_brothers']] # extra columns are now used for algorithm G
 
 # allègre and allegre s similarity was 0.8 in similarity matrix, so we are changing letters with accents..
-data['fullname_alias_adj'] = data['fullname_alias_adj'].str.replace('è', 'e').str.replace('é', 'e').str.replace('î',
-                                                                                                                'i').str.replace(
-    'ç', 'c').str.replace('ë', 'e').str.replace('É', 'E')
+data['fullname_alias_adj'] = data['fullname_alias_adj'].str.replace('è', 'e').str.replace('é', 'e').str.replace('î','i').str.replace('ç', 'c').str.replace('ë', 'e').str.replace('É', 'E')
 # do the same thing for collaborators.
 for column in data.columns.tolist():
     if column.startswith('collaborator') and column.endswith('_adj'):
-        data[column] = data[column].str.replace('è', 'e').str.replace('é', 'e').str.replace('î', 'i').str.replace('ç',
-                                                                                                                  'c').str.replace(
-            'ë', 'e').str.replace('É', 'E')
+        data[column] = data[column].str.replace('è', 'e').str.replace('é', 'e').str.replace('î', 'i').str.replace('ç','c').str.replace('ë', 'e').str.replace('É', 'E')
 
 # creating a dummy for recognized names..
 recognized_names = ['james', 'john', 'robert', 'michael', 'william', 'david', 'richard', 'charles', 'joseph', 'thomas',
@@ -290,8 +309,9 @@ fullnames = data['fullname_alias_adj'].unique().tolist()
 # define a similarity table two string columsn and one measure.
 similarity_table = pandas.DataFrame(columns=['str1', 'str2', 'measure'])
 # two for loops means we are selecting pairs. all possible pairs
-
+'''
 for i in range(0, len(fullnames)):
+    print i, '/', len(fullnames) # to see the percentage process of code
     for j in range(0, i + 1):  #
         # get the ratio between two fullnames..
         s = SequenceMatcher(None, fullnames[i], fullnames[j]).ratio()
@@ -302,6 +322,7 @@ for i in range(0, len(fullnames)):
 # save similarity table to disk
 similarity_table.to_csv('similarity.csv', encoding='utf8', index=False)
 # load similarity from disk.
+'''
 similarity = pandas.read_csv('similarity.csv')
 
 ################################################################################
@@ -316,7 +337,7 @@ for cutoffindex in range(875, 975, 25):
     # we have a cutoff at this point.
 
     # create mid columns before filling them.
-    for alg in ['A', 'B', 'C', 'D', 'E', 'F']:
+    for alg in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
         # (ci_ columsn are a way of keeping index of each row to be used in algorithms.)
         # when dealing with algorithm, it helps to know the row number, this column does not change at any moment, and only used to find the row number..
         data['ci_' + alg] = data.index.astype(int)
@@ -330,8 +351,8 @@ for cutoffindex in range(875, 975, 25):
         # get the variables will be used in algorithms from row i.
         # so for example if shipname is seen below, it means it is the row i's shipname.
         row1name, portdep, shipname, datedep_range_first, datedep_range_last, \
-        datedep_range_mean, last_name, initial, is_company, is_father, \
-        is_son, collaborators = GetVariablesFor(data, i)
+        datedep_range_mean, last_name, initial, is_company, is_father, is_eldest, \
+        is_brother, is_brothers, is_son, collaborators = GetVariablesFor(data, i)
 
         alg = 'A'
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
@@ -343,6 +364,7 @@ for cutoffindex in range(875, 975, 25):
 
         alg = 'B'
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
+            # note that in this version similar_names_considering_fatherson is no more filters based on father - son
             similar_names_considering_fatherson = FilterFatherSonDummies(is_father, is_son, similar_names)
             filtered = FilterPortCollaboratorShipname(similar_names_considering_fatherson, collaborators, portdep,
                                                       shipname, alg)
@@ -388,29 +410,41 @@ for cutoffindex in range(875, 975, 25):
             set_for_f = data[data['lastname_alias_adj'] == last_name][
                 'firstname_alias_adj'].str.strip().unique().tolist()
             if len(set_for_f) == 2 and ('' in set_for_f):
-                CreateMid(data, i, d_results, cutoff, alg)
+                f_results = d_results.copy()
             else:
-                CreateMid(data, i, e_results, cutoff, alg)
+                f_results = e_results.copy()
+            CreateMid(data, i, f_results, cutoff, alg)
+        
+        alg = 'G'
+        if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
+            # get results in F, if row1 has no dummy, remove the guys with dummies from results.
+            g_results = FilterKindredDummies(is_father, is_son, is_eldest, is_brother, is_brothers, f_results)
+            CreateMid(data, i, g_results, cutoff, alg)
 
 data.to_csv('cutoff_algs' + str(cutoff) + '.csv', index=False, encoding='utf8')
 
+data['dummy_captain'] = 0
+data[(data['fullname_alias'] == data['captaina']) | (data['fullname_alias'] == data['captainb']), 'dummy_captain'] = 1
+
 # remove other columns except mid s generated by script
-data = data[[k for k in data.columns if k.startswith('mid')] + ['mark']]
+data = data[[k for k in data.columns if k.startswith('mid')] + ['mark', 'dummy_captain']]
 # 1b reinserting unused columns to the generated ones.
 data = pandas.concat([data, pandas.read_stata(original_data_path)], axis=1)
 
 # the part for assignin the longest name in the match group to fullname_dealias..
-algs = ["A", 'B', 'C', 'D', 'E', 'F']
+algs = ["A", 'B', 'C', 'D', 'E', 'F', 'G']
 cutoffs = ['0.95', '0.925', '0.9', '0.875']
 for cutoff in cutoffs:
     for alg in algs:
         data['fullname_dealias_' + str(cutoff) + '_' + alg] = None
         for i in data['mid_' + str(cutoff) + '_' + alg].unique().tolist():
             try:
+                # fullname_dealias naming decision, longest or most frequent in match group.
                 longest = max(data[data['mid_' + str(cutoff) + '_' + alg] == i]['fullname_alias_adj'].unique().tolist(),
                               key=len)
+                mostfrequent = data[data['mid_'+str(cutoff)+'_'+alg] == i]['fullname_alias_adj'].value_counts().argmax()
                 data.ix[data['mid_' + str(cutoff) + '_' + alg] == i, 'fullname_dealias_' + str(
-                    cutoff) + '_' + alg] = longest
+                    cutoff) + '_' + alg] = mostfrequent
             except:
                 pass
 
@@ -429,7 +463,7 @@ for j in range(0, len(cutoffs)):
     data['diff_F_' + cutoff + '_' + cutoff2] = 0
     data.ix[data['mid_' + cutoff + '_F'] != data['mid_' + cutoff2 + '_F'], 'diff_F_' + cutoff + '_' + cutoff2] = 1
 
-data.to_csv(original_data_path + '_processed.csv', encoding='utf8')
+data.to_csv('matches\\'+original_data_path + '_matches.csv', encoding='utf8')
 
 # on changes.. send the changed part.
 # send the whole file at the end also..
