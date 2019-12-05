@@ -151,7 +151,7 @@ from difflib import SequenceMatcher
 original_data_path = 'Data\\Orginal SV database_14043_merged_precleaned.dta'
 data = pandas.read_stata(original_data_path)
 # running the script for rows between 400-600 rows.. (if you want to do quick check for smaller part)
-# data = data[400:600]
+# data = data[1400:1500]
 
 # 1a- removing unused columns from data.  (refer 1b below)
 data = data[['fullname_alias_adj', 'collaborator1_adj', 'collaborator2_adj', 'collaborator3_adj', \
@@ -345,8 +345,8 @@ for cutoffindex in range(875, 975, 25):
         data['mid_' + str(cutoff) + '_' + alg] = None
 
     # for each row in data...
-    for i in range(0, len(data)):
-        print i
+    for i in data.index:
+        print cutoff, i 
         # the code deals with i th row of data.
         # get the variables will be used in algorithms from row i.
         # so for example if shipname is seen below, it means it is the row i's shipname.
@@ -355,70 +355,72 @@ for cutoffindex in range(875, 975, 25):
         is_brother, is_brothers, is_son, collaborators = GetVariablesFor(data, i)
 
         alg = 'A'
+        similar_names, mark = FilterSimilarNames(similarity, row1name, cutoff, data)
+        data.loc[i, 'mark'] = mark
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            similar_names, mark = FilterSimilarNames(similarity, row1name, cutoff, data)
-            data.loc[i, 'mark'] = mark
             filtered = FilterPortCollaboratorShipname(similar_names, collaborators, portdep, shipname, alg)
             filtered = FilterDateDep(filtered, datedep_range_first, datedep_range_last, datedep_range_mean)
             CreateMid(data, i, filtered, cutoff, alg)
 
         alg = 'B'
+        # note that in this version similar_names_considering_fatherson is no more filters based on father - son
+        similar_names_considering_fatherson = FilterFatherSonDummies(is_father, is_son, similar_names)
+        
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            # note that in this version similar_names_considering_fatherson is no more filters based on father - son
-            similar_names_considering_fatherson = FilterFatherSonDummies(is_father, is_son, similar_names)
             filtered = FilterPortCollaboratorShipname(similar_names_considering_fatherson, collaborators, portdep,
                                                       shipname, alg)
             filtered = FilterDateDep(filtered, datedep_range_first, datedep_range_last, datedep_range_mean)
             CreateMid(data, i, filtered, cutoff, alg)
 
         alg = 'C'
+        if is_company == 0:
+            filtered = FilterPortCollaboratorShipname(similar_names_considering_fatherson, collaborators, portdep,
+                                                      shipname, alg)
+            filtered = FilterDateDep(filtered, datedep_range_first, datedep_range_last, datedep_range_mean)
+        else:
+            filtered = similar_names_considering_fatherson.copy()
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            if is_company == 0:
-                filtered = FilterPortCollaboratorShipname(similar_names_considering_fatherson, collaborators, portdep,
-                                                          shipname, alg)
-                filtered = FilterDateDep(filtered, datedep_range_first, datedep_range_last, datedep_range_mean)
-            else:
-                filtered = similar_names_considering_fatherson.copy()
             c_results = filtered.copy()
-            CreateMid(data, i, filtered, cutoff, alg)
+            CreateMid(data, i, c_results, cutoff, alg)
+
         alg = 'D'
+        similar_names_considering_fatherson_and_recognized_names_and_firstnames = similar_names_considering_fatherson.append(
+            FISOMF(data, last_name, initial)).drop_duplicates().reset_index(drop=True)
+        if is_company == 0:
+            filtered = FilterPortCollaboratorShipname(
+                similar_names_considering_fatherson_and_recognized_names_and_firstnames, collaborators, portdep,
+                shipname, alg)
+            filtered = FilterDateDep(filtered, datedep_range_first, datedep_range_last, datedep_range_mean)
+        else:
+            filtered = similar_names_considering_fatherson_and_recognized_names_and_firstnames.copy()
+        d_results = filtered.copy()
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            similar_names_considering_fatherson_and_recognized_names_and_firstnames = similar_names_considering_fatherson.append(
-                FISOMF(data, last_name, initial)).drop_duplicates().reset_index(drop=True)
-            if is_company == 0:
-                filtered = FilterPortCollaboratorShipname(
-                    similar_names_considering_fatherson_and_recognized_names_and_firstnames, collaborators, portdep,
-                    shipname, alg)
-                filtered = FilterDateDep(filtered, datedep_range_first, datedep_range_last, datedep_range_mean)
-            else:
-                filtered = similar_names_considering_fatherson_and_recognized_names_and_firstnames.copy()
-            d_results = filtered.copy()
-            CreateMid(data, i, filtered, cutoff, alg)
+            CreateMid(data, i, d_results, cutoff, alg)
 
         alg = 'E'
+        matches_of_i_in_d = data[data['mid_' + str(cutoff) + '_D'] == data.loc[i, 'mid_' + str(cutoff) + '_D']]
+        if len(matches_of_i_in_d['firstname_alias_adj'].unique().tolist()) > 1 and matches_of_i_in_d[
+            'dummy_missing_firstname'].astype(int).sum() > 0:
+            e_results = c_results.copy()
+        else:
+            e_results = d_results.copy()
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            matches_of_i_in_d = data[data['mid_' + str(cutoff) + '_D'] == data.loc[i, 'mid_' + str(cutoff) + '_D']]
-            if len(matches_of_i_in_d['firstname_alias_adj'].unique().tolist()) > 1 and matches_of_i_in_d[
-                'dummy_missing_firstname'].astype(int).sum() > 0:
-                e_results = c_results.copy()
-            else:
-                e_results = d_results.copy()
             CreateMid(data, i, e_results, cutoff, alg)
 
         alg = 'F'
+        set_for_f = data[data['lastname_alias_adj'] == last_name][
+            'firstname_alias_adj'].str.strip().unique().tolist()
+        if len(set_for_f) == 2 and ('' in set_for_f):
+            f_results = d_results.copy()
+        else:
+            f_results = e_results.copy()
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            set_for_f = data[data['lastname_alias_adj'] == last_name][
-                'firstname_alias_adj'].str.strip().unique().tolist()
-            if len(set_for_f) == 2 and ('' in set_for_f):
-                f_results = d_results.copy()
-            else:
-                f_results = e_results.copy()
             CreateMid(data, i, f_results, cutoff, alg)
         
         alg = 'G'
+        # get results in F, if row1 has no dummy, remove the guys with dummies from results.
+        g_results = FilterKindredDummies(is_father, is_son, is_eldest, is_brother, is_brothers, f_results)
         if data.loc[i, 'mid_' + str(cutoff) + '_' + alg] == None:
-            # get results in F, if row1 has no dummy, remove the guys with dummies from results.
-            g_results = FilterKindredDummies(is_father, is_son, is_eldest, is_brother, is_brothers, f_results)
             CreateMid(data, i, g_results, cutoff, alg)
 
 data.to_csv('cutoff_algs' + str(cutoff) + '.csv', index=False, encoding='utf8')
@@ -448,6 +450,9 @@ for cutoff in cutoffs:
                     cutoff) + '_' + alg] = mostfrequent
             except:
                 pass
+        for col in ['dummy_son','dummy_father','dummy_brother','dummy_brothers','dummy_eldest']:
+            data.ix[data[col] == 1, 'fullname_dealias_' + str(
+            cutoff) + '_' + alg] = data['fullname_dealias_' + str(cutoff) + '_' + alg] + ' "' + col.replace('dummy_','')+'"'
 
 for j in range(0, len(cutoffs)):
     for i in range(0, len(algs) - 1):
@@ -464,8 +469,10 @@ for j in range(0, len(cutoffs)):
     data['diff_F_' + cutoff + '_' + cutoff2] = 0
     data.ix[data['mid_' + cutoff + '_F'] != data['mid_' + cutoff2 + '_F'], 'diff_F_' + cutoff + '_' + cutoff2] = 1
 
-data.to_csv('matches\\'+original_data_path + '_matches.csv', encoding='utf8')
+data.to_csv('matches\\'+original_data_path + '_matches_v3.csv', encoding='utf8')
 
 # on changes.. send the changed part.
 # send the whole file at the end also..
+
+
 
