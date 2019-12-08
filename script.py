@@ -473,6 +473,18 @@ data.to_csv('matches\\'+original_data_path + '_matches_v3.csv', encoding='utf8')
 
 # on changes.. send the changed part.
 # send the whole file at the end also..
+# Hi Harun, commenting on the latest version of the script!
 
-
-
+'''
+pathway 2: supersimilarity index		
+starting point is fullname_alias_adj		
+1) exercise only done for pairs with similarity index = > .9		
+2) exclude companies from entire exercise		
+3) yearrange is still necessary condition		
+4) compute supersimilarity index on the basis of:		
+	1) portdep	
+	2) shipname	
+	3) collaborators (number of common collaborators)	
+	4) captaina	
+	5) relationship dummies (father, brother, son, etc.)	
+'''
