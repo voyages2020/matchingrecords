@@ -471,9 +471,67 @@ for j in range(0, len(cutoffs)):
 
 data.to_csv('matches\\'+original_data_path + '_matches_v3.csv', encoding='utf8')
 
-# on changes.. send the changed part.
-# send the whole file at the end also..
-# Hi Harun, commenting on the latest version of the script!
+################################################################################
+# Pathway 2
+################################################################################
+original_data_path = 'Data\\Orginal SV database_14043_merged_precleaned.dta'
+data = pandas.read_csv('matches\\'+original_data_path + '_matches_v3.csv')
+data['fullname_alias_adj'] = data['fullname_alias_adj'].str.replace('è', 'e').str.replace('é', 'e').str.replace('î','i').str.replace('ç', 'c').str.replace('ë', 'e').str.replace('É', 'E')
+# do the same thing for collaborators.
+for column in data.columns.tolist():
+    if column.startswith('collaborator') and column.endswith('_adj'):
+        data[column] = data[column].str.replace('è', 'e').str.replace('é', 'e').str.replace('î', 'i').str.replace('ç','c').str.replace('ë', 'e').str.replace('É', 'E')
+data['rowid'] = data.index
+data = data[data.dummy_company == 0]
+similarity = pandas.read_csv('similarity.csv')
+w_port, w_ship, w_captain, w_relation, w_collaborator = 2,2,1,6,3
+prior_weight = pandas.DataFrame(columns=['x1','x2','x3','x4','x5','y'])
+data['ss'] = 0
+data['case'] = 0
+data['ss_mid'] = 0
+data['ss_fullname_dealias'] = None
+for i in data.index:
+    if len(str(data.loc[i,'firstname_alias_adj']).strip()) <  2 or str(data.loc[i,'firstname_alias_adj']).strip() ==  'nan':
+        print i
+        # get only pairs with similarity index greater than .9
+        pm, m = FilterSimilarNames(similarity, data.loc[i,'fullname_alias_adj'], .9, data)
+        pm = pm.append(data[data['lastname_alias_adj']==data.loc[i,'lastname_alias_adj']])
+        pm = pm[pm['firstname_alias_adj'].astype(str) != str(data.loc[i,'firstname_alias_adj'])]
+        pm = FilterDateDep(pm, data.loc[i,'datedep_range_first'], \
+                           data.loc[i,'datedep_range_last'], data.loc[i,'datedep_range_mean'])
+        pm = pm.reset_index(drop=True)
+        ss_max = 0
+        for j in pm.index:
+            if data.loc[i, 'rowid'] != pm.loc[j,'rowid']:
+                is_same_portdep = 1 if data.loc[i,'portdep'] == pm.loc[j,'portdep'] else 0
+                is_same_shipname = 1 if data.loc[i,'shipname'] == pm.loc[j,'shipname'] else 0
+                is_same_captaina = 1 if data.loc[i,'captaina'] == pm.loc[j,'captaina'] else 0
+                is_same_relationship_dummy = 1 
+                for col in ['dummy_son','dummy_father','dummy_brother','dummy_brothers','dummy_eldest']:
+                    if data.loc[i,col] != pm.loc[j,col]:
+                        is_same_relationship_dummy = 0
+                no_of_common_collaborator = len(list(set(GetCollaboratorsOfRow(i, data)).intersection(set(GetCollaboratorsOfRow(j, pm)))))
+
+                ss = is_same_portdep * w_port + is_same_shipname * w_ship + is_same_captaina * w_captain\
+                     + (is_same_portdep + is_same_shipname + is_same_captaina) * is_same_relationship_dummy * w_relation\
+                     + no_of_common_collaborator * w_collaborator
+                if ss > ss_max:
+                    ss_max = ss
+                    data.loc[i, 'ss'] = ss_max
+                    data.loc[i, 'ss_most_similar'] = pm.loc[j,'rowid']
+                    data.loc[i, 'ss_most_similart_fullname_dealias'] = pm.loc[j,'fullname_alias_adj']
+    
+                if data.loc[pm.loc[j,'rowid'], 'ss_mid'] == 0:
+                    if data.loc[i,'ss_mid'] != 0:
+                        data.loc[pm.loc[j,'rowid'], 'ss_mid'] = data.loc[i,'ss_mid']
+                    else:
+                        data.loc[pm.loc[j,'rowid'], 'ss_mid'] = i
+    
+            
+        if data.loc[i,'ss_mid'] != data.loc[i,'mid_0.9_F'] and data.loc[i,'mid_0.9_F'] != data.loc[data.loc[i,'ss_mid'],'mid_0.9_F']:
+            data.loc[i, 'case'] = 1
+data['ss'] = data['ss'].astype(float) / 44.0
+data.to_csv('check.csv')
 
 '''
 pathway 2: supersimilarity index		
